@@ -34,15 +34,4 @@ router.put('/:postId/status', verifyToken, postController.updatePostStatus);
 router.put('/:postId', verifyToken, postController.updatePost);
 router.delete('/:postId', verifyToken, postController.deletePost);
 
-
-
-
-
-// Help request routes
-router.post('/requests', verifyToken, upload.single('image'), postController.createHelpRequest);
-router.get('/requests', postController.getHelpRequests);
-router.get('/requests/:id', postController.getHelpRequestById);
-router.put('/requests/:id', verifyToken, upload.single('image'), postController.updateHelpRequest);
-router.delete('/requests/:id', verifyToken, postController.deleteHelpRequest);
-
 module.exports = router;
