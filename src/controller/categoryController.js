@@ -1,4 +1,4 @@
-const db = require('../../config/db'); // or wherever you handle DB connection
+const prisma = require('../lib/prisma');
 
 // Create category
 exports.createCategory = async (req, res) => {
@@ -6,9 +6,12 @@ exports.createCategory = async (req, res) => {
     const { name } = req.body;
     if (!name) return res.status(400).json({ message: 'Name is required' });
 
-    const [result] = await db.query('INSERT INTO categories (name) VALUES (?)', [name]);
-    res.status(201).json({ id: result.insertId, name });
+    const newCategory = await prisma.category.create({
+      data: { name }
+    });
+    res.status(201).json(newCategory);
   } catch (error) {
+    console.error('Create category error:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -16,9 +19,12 @@ exports.createCategory = async (req, res) => {
 // Get all categories
 exports.getAllCategories = async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM categories ORDER BY name');
-    res.json(rows);
+    const categories = await prisma.category.findMany({
+      orderBy: { name: 'asc' }
+    });
+    res.json(categories);
   } catch (error) {
+    console.error('Get all categories error:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -29,12 +35,16 @@ exports.updateCategory = async (req, res) => {
     const { id } = req.params;
     const { name } = req.body;
 
-    const [result] = await db.query('UPDATE categories SET name = ? WHERE id = ?', [name, id]);
-    if (result.affectedRows === 0) {
+    const updatedCategory = await prisma.category.update({
+      where: { id: parseInt(id) },
+      data: { name }
+    });
+    res.json(updatedCategory);
+  } catch (error) {
+    console.error('Update category error:', error);
+    if (error.code === 'P2025') {
       return res.status(404).json({ message: 'Category not found' });
     }
-    res.json({ id, name });
-  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
@@ -44,12 +54,15 @@ exports.deleteCategory = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [result] = await db.query('DELETE FROM categories WHERE id = ?', [id]);
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Category not found' });
-    }
+    await prisma.category.delete({
+      where: { id: parseInt(id) }
+    });
     res.json({ message: 'Category deleted successfully' });
   } catch (error) {
+    console.error('Delete category error:', error);
+    if (error.code === 'P2025') {
+       return res.status(404).json({ message: 'Category not found' });
+    }
     res.status(500).json({ error: error.message });
   }
 };

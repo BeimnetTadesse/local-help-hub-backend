@@ -1,8 +1,7 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
-
-const pool = require('../../config/db');
+const prisma = require('../lib/prisma');
 
 // ===== validators (exported for route use) =============
 exports.registerValidator = [
@@ -29,35 +28,41 @@ exports.register = async (req, res) => {
   const { username, email, password, role = 'user' } = req.body; // Default to 'user'
 
   try {
-    // Test DB connection
-    console.log('Testing DB connection...');
-    const [testRows] = await pool.query('SELECT 1 + 1 AS solution');
-    console.log('DB test query result:', testRows);
-
     // Check if email or username exists
-    const [emailRows] = await pool.query('SELECT id FROM users WHERE email=?', [email]);
-    if (emailRows.length) return res.status(409).json({ error: 'Email already registered' });
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: email },
+          { username: username }
+        ]
+      }
+    });
 
-    const [usernameRows] = await pool.query('SELECT id FROM users WHERE username=?', [username]);
-    if (usernameRows.length) return res.status(409).json({ error: 'Username already taken' });
+    if (existingUser) {
+      if (existingUser.email === email) {
+        return res.status(409).json({ error: 'Email already registered' });
+      }
+      return res.status(409).json({ error: 'Username already taken' });
+    }
 
     // Hash password
     const hashed = await bcrypt.hash(password, 10);
 
     // Insert new user with role
-    const [result] = await pool.query(
-      'INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)',
-      [username, email, hashed, role]
-    );
-    console.log('Insert result:', result);
+    const newUser = await prisma.user.create({
+      data: {
+        username,
+        email,
+        password: hashed,
+        role
+      }
+    });
 
-    if (!result.affectedRows) {
-      return res.status(500).json({ error: 'Failed to insert user' });
-    }
+    console.log('User created:', newUser);
 
     // Generate JWT token
     const token = jwt.sign(
-      { id: result.insertId, role },
+      { id: newUser.id, role: newUser.role },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -76,10 +81,12 @@ exports.login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    const [rows] = await pool.query('SELECT * FROM users WHERE email=?', [email]);
-    if (!rows.length) return res.status(400).json({ error: 'Invalid credentials' });
+    const user = await prisma.user.findUnique({
+      where: { email }
+    });
 
-    const user = rows[0];
+    if (!user) return res.status(400).json({ error: 'Invalid credentials' });
+
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(400).json({ error: 'Invalid credentials' });
 

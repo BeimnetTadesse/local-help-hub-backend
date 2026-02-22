@@ -1,44 +1,55 @@
-const pool = require('../../config/db');
+const prisma = require('../lib/prisma');
 
-// Get user profile (already implemented)
+// Get user profile
 exports.getProfile = async (req, res) => {
   const userId = req.user.id;
 
   try {
-    const [rows] = await pool.query(
-      'SELECT id, username, email, full_name, phone, address, role FROM users WHERE id = ?',
-      [userId]
-    );
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        address: true,
+        role: true
+      }
+    });
 
-    if (rows.length === 0) {
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json(rows[0]);
+    res.json(user);
   } catch (err) {
     console.error('Get profile error:', err);
     res.status(500).json({ error: 'Server error', details: err.message });
   }
 };
 
-// Update user profile (already implemented)
+// Update user profile
 exports.updateProfile = async (req, res) => {
   const userId = req.user.id;
   const { full_name, phone, address } = req.body;
 
   try {
-    const [result] = await pool.query(
-      'UPDATE users SET full_name = ?, phone = ?, address = ? WHERE id = ?',
-      [full_name, phone, address, userId]
-    );
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'User not found or no changes made' });
-    }
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        fullName: full_name,
+        phone,
+        address
+      }
+    });
 
     res.json({ message: 'Profile updated successfully' });
   } catch (err) {
     console.error('Update profile error:', err);
+    if (err.code === 'P2025') {
+       return res.status(404).json({ error: 'User not found' });
+    }
     res.status(500).json({ error: 'Server error', details: err.message });
   }
 };
@@ -46,10 +57,18 @@ exports.updateProfile = async (req, res) => {
 // Admin: List all users
 exports.getAllUsers = async (req, res) => {
   try {
-    const [rows] = await pool.query(
-      'SELECT id, username, email, full_name, phone, address, role FROM users'
-    );
-    res.json(rows);
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        address: true,
+        role: true
+      }
+    });
+    res.json(users);
   } catch (err) {
     console.error('Get all users error:', err);
     res.status(500).json({ error: 'Server error', details: err.message });
@@ -58,25 +77,26 @@ exports.getAllUsers = async (req, res) => {
 
 // Admin: Delete user by ID
 exports.deleteUserAdmin = async (req, res) => {
-  const userId = req.params.id;
+  const userId = parseInt(req.params.id);
 
   try {
-    const [result] = await pool.query('DELETE FROM users WHERE id = ?', [userId]);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    await prisma.user.delete({
+      where: { id: userId }
+    });
 
     res.json({ message: 'User deleted' });
   } catch (err) {
     console.error('Delete user error:', err);
+    if (err.code === 'P2025') {
+       return res.status(404).json({ error: 'User not found' });
+    }
     res.status(500).json({ error: 'Server error', details: err.message });
   }
 };
 
 // Admin: Change user role
 exports.changeUserRole = async (req, res) => {
-  const userId = req.params.id;
+  const userId = parseInt(req.params.id);
   const { role } = req.body;
 
   if (!role || !['user', 'admin'].includes(role)) {
@@ -84,15 +104,17 @@ exports.changeUserRole = async (req, res) => {
   }
 
   try {
-    const [result] = await pool.query('UPDATE users SET role = ? WHERE id = ?', [role, userId]);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'User not found or role unchanged' });
-    }
+    await prisma.user.update({
+      where: { id: userId },
+      data: { role }
+    });
 
     res.json({ message: `User role updated to ${role}` });
   } catch (err) {
     console.error('Change user role error:', err);
+    if (err.code === 'P2025') {
+       return res.status(404).json({ error: 'User not found' });
+    }
     res.status(500).json({ error: 'Server error', details: err.message });
   }
 };
